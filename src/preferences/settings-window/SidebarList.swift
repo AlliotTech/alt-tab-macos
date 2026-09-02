@@ -242,28 +242,8 @@ class SidebarListRow: ClickHoverStackView {
     }
 
     func setProBadge(_ show: Bool) {
-        // No-op if already in the requested state. Rows are recycled across refreshes, so this is
-        // called repeatedly with the same value; without this guard each call would leave the old
-        // (now badge-less) `wrapper` in `titleRow` and append a new one — the wrappers pile up,
-        // each adding `titleRow.spacing`, progressively squeezing and truncating the title.
-        guard show != (proBadge != nil) else { return }
-        // Remove the whole wrapper from `titleRow`, not just the badge from the wrapper.
         proBadge?.superview?.removeFromSuperview()
         proBadge = nil
-        if show {
-            let badge = ProBadgeView()
-            let wrapper = NSView()
-            wrapper.translatesAutoresizingMaskIntoConstraints = false
-            wrapper.addSubview(badge)
-            NSLayoutConstraint.activate([
-                badge.leadingAnchor.constraint(equalTo: wrapper.leadingAnchor),
-                badge.trailingAnchor.constraint(equalTo: wrapper.trailingAnchor),
-                badge.centerYAnchor.constraint(equalTo: wrapper.centerYAnchor, constant: 1),
-                wrapper.heightAnchor.constraint(equalTo: badge.heightAnchor),
-            ])
-            titleRow.addArrangedSubview(wrapper)
-            proBadge = badge
-        }
     }
 
     private var isWindowKey: Bool { window?.isKeyWindow ?? false }

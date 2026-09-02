@@ -219,7 +219,7 @@ class ProBadgeView: NSView {
     /// The literal text rendered on the badge. Exposed as a constant so the search index can
     /// reference the same string (e.g. `ShortcutsWhenActiveSheet.searchableStrings`) without
     /// duplicating the `NSLocalizedString` call.
-    static let proLabel = NSLocalizedString("Pro", comment: "")
+    static let proLabel = ""
 
     /// Bundle returned from `attach(to:segmentIndex:)`: the badge plus the icon and label
     /// overlays we render on top of the Pro segment. Callers store this to drive
@@ -256,64 +256,13 @@ class ProBadgeView: NSView {
     /// Only valid for the LAST segment — the badge anchors to the control's trailing edge.
     @discardableResult
     static func attach(to segmentedControl: NSSegmentedControl, segmentIndex: Int, label: String, symbol: Symbols) -> SegmentOverlay {
-        let selected = segmentedControl.selectedSegment == segmentIndex
-        segmentedControl.setLabel("", forSegment: segmentIndex)
-        segmentedControl.setImage(nil, forSegment: segmentIndex)
-        if #available(macOS 10.13, *) {
-            segmentedControl.setToolTip(label, forSegment: segmentIndex)
-        }
-        let segmentLeading = (0..<segmentIndex).reduce(CGFloat(0)) { $0 + segmentedControl.width(forSegment: $1) }
         let colorProvider = segmentColorProvider(for: segmentedControl, segmentIndex: segmentIndex)
         let iconView = DynamicColorImageView()
         iconView.colorProvider = colorProvider
-        iconView.translatesAutoresizingMaskIntoConstraints = false
-        // Rendered from our bundled font subset; `isTemplate = true` (set by NSImage.fromSymbol)
-        // makes AppKit apply `contentTintColor`. Mirrors the sibling segments' native rendering.
-        iconView.image = NSImage.fromSymbol(symbol, pointSize: 13)
-        if #available(macOS 10.14, *) { iconView.contentTintColor = colorProvider() }
-        iconView.setContentHuggingPriority(.required, for: .horizontal)
-        iconView.setContentCompressionResistancePriority(.required, for: .horizontal)
         let textLabel = DynamicColorTextField(labelWithString: label)
         textLabel.colorProvider = colorProvider
-        textLabel.translatesAutoresizingMaskIntoConstraints = false
-        textLabel.font = segmentedControl.font
-        textLabel.textColor = colorProvider()
-        textLabel.lineBreakMode = .byTruncatingTail
-        textLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         let badge = ProBadgeView()
-        badge.setSelected(selected)
-        segmentedControl.addSubview(iconView)
-        segmentedControl.addSubview(textLabel)
-        segmentedControl.addSubview(badge)
-        let segmentWidth = segmentedControl.width(forSegment: segmentIndex)
-        let iconWidth = iconView.fittingSize.width
-        let textWidth = textLabel.fittingSize.width
-        let badgeWidth = badge.fittingSize.width
-        let contentWidth = iconWidth + 2 + textWidth
-        let availableWidth = segmentWidth - badgeWidth - 4 - 4 - 4 // leading pad, gap, trailing pad
-        // Position content as close to centered as possible without overlapping the Pro badge:
-        // 1) Full-segment center if the centered content clears the badge.
-        // 2) Otherwise shift left only as much as needed to keep the content's right edge clear.
-        // 3) If even the leftmost position overflows, stay at the left pad and let the trailing
-        //    constraint truncate.
-        let maxContentRightEdge = segmentWidth - badgeWidth - 4
-        let centerOffset = (segmentWidth - contentWidth) / 2
-        let leadingOffset: CGFloat
-        if centerOffset + contentWidth <= maxContentRightEdge {
-            leadingOffset = segmentLeading + centerOffset
-        } else {
-            leadingOffset = segmentLeading + max(maxContentRightEdge - contentWidth, 8)
-        }
-        NSLayoutConstraint.activate([
-            iconView.leadingAnchor.constraint(equalTo: segmentedControl.leadingAnchor, constant: leadingOffset),
-            iconView.centerYAnchor.constraint(equalTo: segmentedControl.centerYAnchor),
-            textLabel.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 2),
-            textLabel.centerYAnchor.constraint(equalTo: segmentedControl.centerYAnchor),
-            textLabel.trailingAnchor.constraint(lessThanOrEqualTo: badge.leadingAnchor),
-            textLabel.widthAnchor.constraint(lessThanOrEqualToConstant: availableWidth - iconWidth - 2),
-            badge.centerYAnchor.constraint(equalTo: segmentedControl.centerYAnchor),
-            badge.trailingAnchor.constraint(equalTo: segmentedControl.trailingAnchor, constant: -segmentTrailingPadding),
-        ])
+        badge.isHidden = true
         return SegmentOverlay(badge: badge, icon: iconView, label: textLabel)
     }
 
@@ -341,8 +290,8 @@ class ProBadgeView: NSView {
         // Register the "Pro" tag with the search index if a section build is in progress —
         // mirrors what the post-construction walk in `SettingsWindow.collectSearchContent` does
         // when it spots a `ProBadgeView`, just without needing the walk to find it after.
-        SettingsSearchIndex.registerString(ProBadgeView.proLabel)
         translatesAutoresizingMaskIntoConstraints = false
+        isHidden = true
         wantsLayer = true
         layer?.cornerRadius = 4
         label.font = NSFont.systemFont(ofSize: 9, weight: .semibold)

@@ -515,6 +515,7 @@ class SettingsWindow: NSWindow {
         upgradeButton.target = self
         upgradeButton.action = #selector(upgradeButtonClicked)
         upgradeButton.translatesAutoresizingMaskIntoConstraints = false
+        upgradeButton.isHidden = true
         parent.addSubview(upgradeButton)
         // Align with the sidebar source-list highlight: the scroll view sits flush against the
         // sidebar edges and `.sourceList` adds its own ~10pt internal inset, so the highlight
@@ -523,14 +524,14 @@ class SettingsWindow: NSWindow {
         let inset = Self.sidebarHorizontalPadding
         NSLayoutConstraint.activate([
             upgradeButton.centerXAnchor.constraint(equalTo: parent.centerXAnchor),
-            upgradeButton.bottomAnchor.constraint(equalTo: quitButton.topAnchor, constant: -20),
+            upgradeButton.bottomAnchor.constraint(equalTo: quitButton.topAnchor),
             upgradeButton.leadingAnchor.constraint(equalTo: parent.leadingAnchor, constant: inset),
             upgradeButton.trailingAnchor.constraint(equalTo: parent.trailingAnchor, constant: -inset),
         ])
     }
 
     @objc private func upgradeButtonClicked() {
-        showUpgradeView()
+        App.supportProject()
     }
 
     private func setupQuitButton(_ parent: NSView) {
@@ -1130,35 +1131,6 @@ class SettingsWindow: NSWindow {
     }
 
     func showUpgradeView() {
-        guard !isShowingUpgradeView else { return }
-        isShowingUpgradeView = true
-        sidebarTableView.deselectAll(nil)
-        selectedSectionId = nil
-        sectionsStackBottomConstraint.isActive = false
-        sectionsStack.isHidden = true
-        if upgradeContentView == nil {
-            let view = UpgradeTab.initTab()
-            view.translatesAutoresizingMaskIntoConstraints = false
-            sectionsDocumentView.addSubview(view)
-            let bottomConstraint = view.bottomAnchor.constraint(equalTo: sectionsDocumentView.bottomAnchor, constant: -Self.contentBottomPadding)
-            NSLayoutConstraint.activate([
-                view.topAnchor.constraint(equalTo: sectionsDocumentView.topAnchor, constant: Self.contentTopPadding + Self.topSectionTitlePadding),
-                view.leadingAnchor.constraint(equalTo: sectionsDocumentView.leadingAnchor, constant: Self.contentHorizontalPadding + Self.sectionContentHorizontalMargin),
-                view.trailingAnchor.constraint(lessThanOrEqualTo: sectionsDocumentView.trailingAnchor, constant: -(Self.contentTrailingPadding + Self.sectionContentHorizontalMargin)),
-                bottomConstraint,
-            ])
-            upgradeViewBottomConstraint = bottomConstraint
-            upgradeContentView = view
-        } else {
-            UpgradeTab.refreshStatus()
-        }
-        upgradeViewBottomConstraint?.isActive = true
-        upgradeContentView?.isHidden = false
-        isProgrammaticScrollInProgress = true
-        defer { isProgrammaticScrollInProgress = false }
-        rightScrollView.contentView.scroll(to: .zero)
-        rightScrollView.reflectScrolledClipView(rightScrollView.contentView)
-        lastContentScrollY = 0
     }
 
     private func hideUpgradeView() {

@@ -23,8 +23,8 @@ class App: AppCenterApplication {
     }
     override class var shared: App { super.shared as! App }
     static var supportProjectAction: Selector { #selector(App.supportProject) }
-    static var upgradeToProAction: Selector { #selector(App.upgradeToPro) }
-    static var openAccountAction: Selector { #selector(App.openAccount) }
+    static var upgradeToProAction: Selector { #selector(App.supportProject) }
+    static var openAccountAction: Selector { #selector(App.supportProject) }
     static var isTerminating = false
     private static var isVeryFirstSummon = true
     private static var pendingShowSettingsWindow = false
@@ -118,11 +118,11 @@ class App: AppCenterApplication {
     }
 
     @objc static func upgradeToPro() {
-        ProTransitionManager.openCheckout()
+        supportProject()
     }
 
     @objc static func openAccount() {
-        UpgradeTab.openAccountPage()
+        supportProject()
     }
 
     @objc static func showFeedbackPanel() {
@@ -199,11 +199,7 @@ class App: AppCenterApplication {
         guard !Preferences.settingsWindowShownOnFirstLaunch else { return false }
         // If the Day1 Welcome window will be shown on this launch, wait for the user to close it
         // before showing Settings — otherwise both windows appear stacked.
-        if willShowDay1WelcomeOnAppLaunch() {
-            deferFirstLaunchSettingsUntilDay1WelcomeCloses()
-        } else {
-            showAndCenterSettingsWindowOnFirstLaunch()
-        }
+        showAndCenterSettingsWindowOnFirstLaunch()
         return true
     }
 
@@ -338,7 +334,6 @@ class App: AppCenterApplication {
             // recalc) is invisible. `TilesPanel.show()` flips alpha back to 1 once everything is
             // in its final state. No-op on first summon (panel was orderOut'd with alpha=0).
             TilesPanel.shared.alphaValue = 0
-            ProTransitionManager.shared.onSwitcherShown()
             let shouldStartInSearchMode = Preferences.effectiveShortcutStyle(shortcutIndex) == .searchOnRelease
             TilesView.startSearchSession(shouldStartInSearchMode)
             if shouldStartInSearchMode {
@@ -468,8 +463,6 @@ class App: AppCenterApplication {
         if QAMenu.graphEnabled { DebugMenu.setEnabled(true) }
         #endif
         UsageStats.prune()
-        ProTransitionManager.shared.onAction = { ProPromptHost.shared.dispatch($0) }
-        ProTransitionManager.shared.onAppLaunchComplete()
         Logger.info { "Finished launching AltTab" }
     }
 }
@@ -511,13 +504,9 @@ extension App: NSApplicationDelegate {
         AXUIElement.setGlobalTimeout()
         PreferencesPersistenceCheck.runInBackground()
         LicenseManager.shared.onBeforeProUnlock = { ProTransitionManager.shared.onProUnlocked() }
-        LicenseManager.shared.onStateChanged = { state in
+        LicenseManager.shared.onStateChanged = { _ in
             Menubar.refreshLicenseMenuItems()
-            syncLicenseCookie(state: state)
-            ProTransitionManager.shared.onLicenseStateChanged()
-            UpgradeTab.refreshStatus()
-            SettingsWindow.shared?.refreshUpgradeButton()
-            App.resetPreferencesDependentComponents()
+            if TilesPanel.shared != nil { App.resetPreferencesDependentComponents() }
             // `isProLocked` reads from state, so a state change implicitly changes the lock.
             // Notify UI observers so Settings rows repaint their ghost/pro-locked styling.
             NotificationCenter.default.post(name: ProTransitionManager.proLockStateDidChangeNotification, object: nil)
@@ -540,22 +529,6 @@ extension App: NSApplicationDelegate {
     }
 
     private func handleCustomUrl(_ url: URL) {
-        guard url.host == "activate",
-              let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              let licenseKey = components.queryItems?.first(where: { $0.name == "license_key" })?.value,
-              !licenseKey.isEmpty else {
-            return
-        }
-        UpgradeTab.showAutoActivating(licenseKey)
-        LicenseManager.shared.activate(licenseKey) { result in
-            switch result {
-            case .success:
-                UpgradeTab.showAutoActivationSuccess()
-                App.resetPreferencesDependentComponents()
-            case .failure:
-                UpgradeTab.showAutoActivationFailed(licenseKey)
-            }
-        }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
