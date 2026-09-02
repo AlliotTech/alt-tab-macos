@@ -1,0 +1,97 @@
+# Fork release pipeline for the no-pro branch. Upstream's ci_cd.yml (master-only) is
+# untouched and never runs here: the fork's master mirrors upstream and carries no fork CI.
+name: no-pro release
+
+on:
+  push:
+    branches:
+      - no-pro
+  workflow_dispatch:
+
+env:
+  APP_NAME: AltTab
+  VERSION_FILE: VERSION.txt
+  XCODE_BUILD_PATH: DerivedData/Build/Products/Release
+
+permissions:
+  contents: write # tag + release
+
+concurrency:
+  group: no-pro-release
+  cancel-in-progress: false # let an in-flight release finish; queue the new push
+
+jobs:
+  release:
+    # workflow_dispatch defaults to the default branch (master); only run for no-pro
+    if: github.ref == 'refs/heads/no-pro'
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # full history + tags: version comes from the upstream release commit
+          fetch-tags: true # prev-tag step walks v* tags
+      - id: version
+        run: |
+          set -eu
+          # Version = the upstream release commit the no-pro delta is rebased on. semantic-
+          # release writes "chore(release): X.Y.Z [skip ci]" on every upstream release, so
+          # this needs no per-update maintenance and never drifts.
+          version="$(git --no-pager log --format='%s' | grep -m1 -E '^chore\(release\): [0-9]' | sed -nE 's/^chore\(release\): ([0-9]+(\.[0-9]+){2}).*/\1/p')"
+          if [[ -z "$version" ]]; then
+            echo "no upstream 'chore(release):' commit reachable from HEAD" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "$version" > "$VERSION_FILE"
+      # Same adhoc identity as the hand-built v11.3.0 release (fork has no certs):
+      # codesign -dv showed "Signature=adhoc, flags=runtime". Unset the Developer ID
+      # identity so the app signs adhoc with hardened runtime, like every prior release.
+      - run: |
+          cat > config/local.xcconfig <<EOF
+          CURRENT_PROJECT_VERSION = $(cat "$VERSION_FILE")
+          APPCENTER_SECRET =
+          CODE_SIGN_IDENTITY = -
+          OTHER_CODE_SIGN_FLAGS = --timestamp=none --options runtime
+          EOF
+      # Skip the three suites the no-pro stub makes unrunnable (they exercise the trial/pro
+      # state machine the stub deletes); everything else must stay green.
+      - name: Test
+        run: xcodebuild test -project alt-tab-macos.xcodeproj -scheme Test -configuration Release -derivedDataPath DerivedData -skip-testing:unit-tests/LicenseManagerTests -skip-testing:unit-tests/ProBadgeViewSegmentTests -skip-testing:unit-tests/SidebarListTests
+      - name: Build
+        run: xcodebuild -project alt-tab-macos.xcodeproj -scheme Release -derivedDataPath DerivedData build
+      - name: Package zip
+        run: |
+          set -eu
+          cd "$XCODE_BUILD_PATH"
+          zipName="$APP_NAME-no-pro-$(cat "$GITHUB_WORKSPACE/$VERSION_FILE").zip"
+          ditto -c -k --keepParent "$APP_NAME.app" "$zipName"
+      - id: prev
+        run: |
+          set -eu
+          # Previous fork release tag. `sort -V` in `git tag -l` orders v* tags; pick the
+          # newest that isn't this version. Then latest = this version is newer than it.
+          prev="$(git tag -l 'v*' --sort=-v:refname | grep -v "^v$(cat "$VERSION_FILE")$" | head -1 || true)"
+          if [[ -n "$prev" ]]; then echo "prev=$prev" >> "$GITHUB_OUTPUT"; fi
+          latest=true
+          if [[ -n "$prev" ]] && [[ "$(cat "$VERSION_FILE")" == "$(echo "$prev" | sed 's/^v//')" ]]; then
+            # same version re-released: not newer
+            latest=false
+          fi
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+      - name: Create release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: v${{ steps.version.outputs.version }}
+          # make_latest guards against a republished same-version build stealing "latest"
+          # when a newer one exists.
+          make_latest: ${{ steps.prev.outputs.latest }}
+          files: ${{ env.XCODE_BUILD_PATH }}/*.zip
+          body: |
+            No-pro build based on upstream v${{ steps.version.outputs.version }}.
+            ${{ steps.prev.outputs.prev != '' && format('**Full Changelog**: https://github.com/AlliotTech/alt-tab-macos/compare/{0}...v{1}', steps.prev.outputs.prev, steps.version.outputs.version) || '' }}
+
+            ```
+            brew info --cask alliottech/tap/alt-tab-no-pro
+            ```
